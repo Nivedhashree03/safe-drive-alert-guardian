@@ -1,3 +1,4 @@
+
 // Service to handle driver monitoring with trained model integration
 export class DriverMonitoringService {
   private model: any = null;
@@ -112,22 +113,44 @@ export class DriverMonitoringService {
     return 'awake';
   }
 
-  // Get camera stream for real-time monitoring
+  // Get camera stream for real-time monitoring with better error handling
   async initializeCamera(): Promise<MediaStream | null> {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      console.log('🔍 Requesting camera access...');
+      
+      // Check if getUserMedia is supported
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Camera access not supported in this browser');
+      }
+
+      const constraints = {
         video: { 
-          width: 640, 
-          height: 480,
+          width: { ideal: 640 }, 
+          height: { ideal: 480 },
           facingMode: 'user' // Front camera for driver monitoring
         },
         audio: false
-      });
-      console.log('📹 Camera initialized for driver monitoring');
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('📹 Camera initialized successfully for driver monitoring');
+      console.log('📹 Video tracks:', stream.getVideoTracks().length);
+      
       return stream;
     } catch (error) {
-      console.error('Failed to access camera:', error);
-      return null;
+      console.error('❌ Failed to access camera:', error);
+      
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          throw new Error('Camera permission denied. Please allow camera access and try again.');
+        } else if (error.name === 'NotFoundError') {
+          throw new Error('No camera found. Please connect a camera and try again.');
+        } else if (error.name === 'NotReadableError') {
+          throw new Error('Camera is already in use by another application.');
+        }
+      }
+      
+      throw new Error('Failed to access camera. Please check your camera settings.');
     }
   }
 
@@ -145,6 +168,54 @@ export class DriverMonitoringService {
     } catch (error) {
       console.error('Error processing video frame:', error);
       return null;
+    }
+  }
+
+  // Send emergency message to contact
+  async sendEmergencyMessage(phoneNumber: string, driverName: string, location: string) {
+    try {
+      console.log('📱 Sending emergency message to:', phoneNumber);
+      
+      // In a real app, this would integrate with SMS service like Twilio
+      // For demo purposes, we'll simulate the message
+      const message = `🚨 EMERGENCY ALERT 🚨
+Driver: ${driverName}
+Status: SLEEP DETECTED WHILE DRIVING
+Location: ${location}
+Time: ${new Date().toLocaleString()}
+This is an automated emergency alert from Safe Drive Guardian.`;
+
+      console.log('📱 Emergency message sent:', message);
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      return { success: true, message: 'Emergency message sent successfully' };
+    } catch (error) {
+      console.error('Failed to send emergency message:', error);
+      return { success: false, message: 'Failed to send emergency message' };
+    }
+  }
+
+  // Get current location
+  async getCurrentLocation(): Promise<string> {
+    try {
+      if (!navigator.geolocation) {
+        return 'Location not available';
+      }
+
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          timeout: 10000,
+          enableHighAccuracy: true
+        });
+      });
+
+      const { latitude, longitude } = position.coords;
+      return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+    } catch (error) {
+      console.error('Failed to get location:', error);
+      return 'Location unavailable';
     }
   }
 }
