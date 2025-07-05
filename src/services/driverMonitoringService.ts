@@ -1,4 +1,3 @@
-
 // Service to handle driver monitoring with trained model integration
 export class DriverMonitoringService {
   private model: any = null;
@@ -14,42 +13,48 @@ export class DriverMonitoringService {
   private async initializeAudio() {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      // Create a simple alert tone
-      await this.createAlertTone();
+      // Create a sleep-specific alert tone
+      await this.createSleepAlertTone();
     } catch (error) {
       console.error('Failed to initialize audio:', error);
     }
   }
 
-  // Create an emergency alert tone
-  private async createAlertTone() {
+  // Create an urgent sleep detection alert tone
+  private async createSleepAlertTone() {
     if (!this.audioContext) return;
 
     const sampleRate = this.audioContext.sampleRate;
-    const duration = 2; // 2 seconds
+    const duration = 3; // 3 seconds of urgent alarm
     const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
     const data = buffer.getChannelData(0);
 
-    // Create an urgent beeping sound
+    // Create an urgent, piercing alarm sound for sleep detection
     for (let i = 0; i < buffer.length; i++) {
       const time = i / sampleRate;
-      const frequency = Math.sin(time * 10) > 0 ? 800 : 1200; // Alternating frequency
-      data[i] = Math.sin(2 * Math.PI * frequency * time) * 0.3;
+      // Rapid alternating between high frequencies for urgency
+      const frequency = Math.sin(time * 8) > 0 ? 1400 : 1800;
+      const envelope = Math.sin(time * 4) * 0.5; // Pulsing effect
+      data[i] = Math.sin(2 * Math.PI * frequency * time) * (0.4 + envelope);
     }
 
     this.alertSound = buffer;
   }
 
-  // Play emergency alert sound
+  // Play sleep detection alarm sound
   playAlertSound() {
     if (!this.audioContext || !this.alertSound) return;
 
-    const source = this.audioContext.createBufferSource();
-    source.buffer = this.alertSound;
-    source.connect(this.audioContext.destination);
-    source.start();
-    
-    console.log('🚨 Emergency alert sound playing!');
+    try {
+      const source = this.audioContext.createBufferSource();
+      source.buffer = this.alertSound;
+      source.connect(this.audioContext.destination);
+      source.start();
+      
+      console.log('🚨 SLEEP DETECTION ALARM - Sound playing!');
+    } catch (error) {
+      console.error('Failed to play alert sound:', error);
+    }
   }
 
   // Load your trained model (placeholder - replace with your actual model)

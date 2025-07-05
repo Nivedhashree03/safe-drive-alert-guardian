@@ -51,9 +51,10 @@ export const useDriverMonitoring = () => {
           const status = await driverMonitoring.analyzeDriverState(imageData || undefined);
           setDriverStatus(status);
 
-          // Play alert sound for critical states
-          if (status === 'asleep' || status === 'drowsy') {
+          // Play alert sound ONLY when sleep is detected
+          if (status === 'asleep') {
             driverMonitoring.playAlertSound();
+            console.log('🚨 SLEEP DETECTED - Playing alarm sound!');
           }
         }
       }, 2000); // Analyze every 2 seconds
