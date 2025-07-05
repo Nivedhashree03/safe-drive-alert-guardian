@@ -1,11 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Shield, MapPin, Phone, Bell, AlertTriangle, Heart } from 'lucide-react';
+import { Shield, MapPin, Phone, Bell, AlertTriangle, Heart, Camera, Wifi } from 'lucide-react';
 import EmergencyAlert from './EmergencyAlert';
 import { useToast } from '@/hooks/use-toast';
+import { useDriverMonitoring } from '@/hooks/useDriverMonitoring';
 
 interface User {
   fullName: string;
@@ -20,40 +21,66 @@ interface DashboardProps {
 }
 
 const Dashboard = ({ user, onLogout, onOpenProfile }: DashboardProps) => {
-  const [isMonitoring, setIsMonitoring] = useState(false);
-  const [driverStatus, setDriverStatus] = useState<'awake' | 'drowsy' | 'asleep'>('awake');
   const [showEmergencyAlert, setShowEmergencyAlert] = useState(false);
   const { toast } = useToast();
+  
+  const {
+    isMonitoring,
+    driverStatus,
+    isModelLoaded,
+    startMonitoring,
+    stopMonitoring,
+    videoRef,
+    canvasRef
+  } = useDriverMonitoring();
 
-  // Simulate driver monitoring
-  useEffect(() => {
-    if (!isMonitoring) return;
+  // Trigger emergency alert when driver falls asleep
+  React.useEffect(() => {
+    if (driverStatus === 'asleep' && isMonitoring) {
+      const timer = setTimeout(() => {
+        setShowEmergencyAlert(true);
+      }, 3000); // 3 seconds of sleep detection triggers emergency
 
-    const interval = setInterval(() => {
-      // Simulate random status changes for demo
-      const statuses: ('awake' | 'drowsy' | 'asleep')[] = ['awake', 'awake', 'awake', 'drowsy', 'asleep'];
-      const randomStatus = statuses[Math.floor(Math.random() * statuses.length)];
-      setDriverStatus(randomStatus);
+      return () => clearTimeout(timer);
+    }
+  }, [driverStatus, isMonitoring]);
 
-      if (randomStatus === 'asleep') {
-        // Trigger emergency alert after 3 seconds of sleep detection
-        setTimeout(() => {
-          setShowEmergencyAlert(true);
-        }, 3000);
+  const handleMonitoringToggle = async () => {
+    try {
+      if (isMonitoring) {
+        stopMonitoring();
+        toast({
+          title: "Monitoring Stopped",
+          description: "Driver safety monitoring has been disabled.",
+        });
+      } else {
+        await startMonitoring();
+        toast({
+          title: "Monitoring Started",
+          description: "AI-powered driver safety monitoring is now active.",
+        });
       }
-    }, 10000); // Check every 10 seconds
-
-    return () => clearInterval(interval);
-  }, [isMonitoring]);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to access camera. Please allow camera permissions.",
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleEmergencyResponse = (responded: boolean) => {
     setShowEmergencyAlert(false);
     if (!responded) {
-      // Emergency protocol activated
       toast({
-        title: "Emergency Protocol Activated",
+        title: "🚨 Emergency Protocol Activated",
         description: "Location sent to nearby hospitals and emergency contacts notified.",
         variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Emergency Cancelled",
+        description: "Glad you're safe! Stay alert while driving.",
       });
     }
   };
@@ -69,8 +96,8 @@ const Dashboard = ({ user, onLogout, onOpenProfile }: DashboardProps) => {
   const getStatusText = () => {
     switch (driverStatus) {
       case 'awake': return 'Alert & Safe';
-      case 'drowsy': return 'Drowsiness Detected';
-      case 'asleep': return 'Sleep Detected - DANGER';
+      case 'drowsy': return '⚠️ Drowsiness Detected';
+      case 'asleep': return '🚨 SLEEP DETECTED - DANGER!';
     }
   };
 
@@ -99,34 +126,69 @@ const Dashboard = ({ user, onLogout, onOpenProfile }: DashboardProps) => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Monitoring Status */}
+          {/* AI-Powered Driver Monitoring */}
           <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
-                <Heart className="h-5 w-5" />
-                <span>Driver Monitoring Status</span>
+                <Camera className="h-5 w-5" />
+                <span>AI Driver Monitoring</span>
+                <Badge variant={isModelLoaded ? 'default' : 'secondary'}>
+                  {isModelLoaded ? 'Model Ready' : 'Loading...'}
+                </Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-4 h-4 rounded-full ${getStatusColor()}`}></div>
-                  <span className="text-lg font-semibold">{getStatusText()}</span>
-                </div>
-                <Badge variant={driverStatus === 'awake' ? 'default' : 'destructive'}>
-                  {driverStatus.toUpperCase()}
-                </Badge>
-              </div>
               <div className="space-y-4">
+                {/* Status Display */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-3">
+                    <div className={`w-4 h-4 rounded-full ${getStatusColor()} ${driverStatus !== 'awake' ? 'animate-pulse' : ''}`}></div>
+                    <span className="text-lg font-semibold">{getStatusText()}</span>
+                  </div>
+                  <Badge variant={driverStatus === 'awake' ? 'default' : 'destructive'}>
+                    {driverStatus.toUpperCase()}
+                  </Badge>
+                </div>
+
+                {/* Camera Feed */}
+                <div className="relative bg-black rounded-lg overflow-hidden" style={{ height: '200px' }}>
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover"
+                    playsInline
+                    muted
+                    style={{ display: isMonitoring ? 'block' : 'none' }}
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    className="hidden"
+                  />
+                  {!isMonitoring && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="text-center text-gray-400">
+                        <Camera className="h-12 w-12 mx-auto mb-2" />
+                        <p>Camera will activate when monitoring starts</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Control Button */}
                 <Button
-                  onClick={() => setIsMonitoring(!isMonitoring)}
+                  onClick={handleMonitoringToggle}
+                  disabled={!isModelLoaded}
                   className={`w-full ${isMonitoring ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
                 >
-                  {isMonitoring ? 'Stop Monitoring' : 'Start Monitoring'}
+                  {!isModelLoaded ? 'Loading AI Model...' : isMonitoring ? '🛑 Stop Monitoring' : '🎯 Start AI Monitoring'}
                 </Button>
+
                 {isMonitoring && (
-                  <div className="text-sm text-gray-600 text-center">
-                    🔴 Active monitoring - Your safety is being tracked
+                  <div className="text-sm text-center space-y-1">
+                    <div className="flex items-center justify-center space-x-2 text-green-600">
+                      <Wifi className="h-4 w-4" />
+                      <span>🔴 Live AI monitoring active</span>
+                    </div>
+                    <p className="text-gray-600">Your safety is being analyzed in real-time</p>
                   </div>
                 )}
               </div>
@@ -138,14 +200,17 @@ const Dashboard = ({ user, onLogout, onOpenProfile }: DashboardProps) => {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <AlertTriangle className="h-5 w-5" />
-                <span>Quick Actions</span>
+                <span>Emergency Actions</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button 
                 variant="outline" 
                 className="w-full justify-start"
-                onClick={() => toast({ title: "Test Alert Sent", description: "Emergency contacts have been notified." })}
+                onClick={() => {
+                  setShowEmergencyAlert(true);
+                  toast({ title: "Manual Emergency Alert", description: "Testing emergency protocol..." });
+                }}
               >
                 <Bell className="h-4 w-4 mr-2" />
                 Test Emergency Alert
@@ -153,15 +218,15 @@ const Dashboard = ({ user, onLogout, onOpenProfile }: DashboardProps) => {
               <Button 
                 variant="outline" 
                 className="w-full justify-start"
-                onClick={() => toast({ title: "Location Shared", description: "Current location sent to emergency contacts." })}
+                onClick={() => toast({ title: "📍 Location Shared", description: "Current location sent to emergency contacts." })}
               >
                 <MapPin className="h-4 w-4 mr-2" />
-                Share Location
+                Share Location Now
               </Button>
               <Button 
                 variant="outline" 
                 className="w-full justify-start"
-                onClick={() => toast({ title: "Emergency Call", description: "Calling primary emergency contact..." })}
+                onClick={() => toast({ title: "📞 Calling Emergency", description: "Calling primary emergency contact..." })}
               >
                 <Phone className="h-4 w-4 mr-2" />
                 Emergency Call
@@ -176,12 +241,20 @@ const Dashboard = ({ user, onLogout, onOpenProfile }: DashboardProps) => {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm">GPS Connection</span>
-                <Badge variant="default" className="bg-green-600">Active</Badge>
+                <span className="text-sm">AI Model</span>
+                <Badge variant={isModelLoaded ? "default" : "secondary"} className={isModelLoaded ? "bg-green-600" : ""}>
+                  {isModelLoaded ? "Loaded" : "Loading..."}
+                </Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm">Heart Rate Monitor</span>
-                <Badge variant="default" className="bg-green-600">Connected</Badge>
+                <span className="text-sm">Camera Access</span>
+                <Badge variant={isMonitoring ? "default" : "secondary"} className={isMonitoring ? "bg-green-600" : ""}>
+                  {isMonitoring ? "Active" : "Standby"}
+                </Badge>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm">GPS Connection</span>
+                <Badge variant="default" className="bg-green-600">Active</Badge>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm">Emergency Contacts</span>
@@ -194,32 +267,34 @@ const Dashboard = ({ user, onLogout, onOpenProfile }: DashboardProps) => {
             </CardContent>
           </Card>
 
-          {/* Recent Activity */}
+          {/* Real-time Activity Log */}
           <Card className="lg:col-span-2">
             <CardHeader>
-              <CardTitle>Recent Activity</CardTitle>
+              <CardTitle>Live Activity Monitor</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
+                {isMonitoring && (
+                  <div className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <div>
+                      <p className="text-sm font-medium">AI monitoring active - Status: {getStatusText()}</p>
+                      <p className="text-xs text-gray-500">Real-time analysis in progress</p>
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                   <div>
-                    <p className="text-sm font-medium">Safe driving session completed</p>
-                    <p className="text-xs text-gray-500">2 hours ago - No incidents detected</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
-                  <div>
-                    <p className="text-sm font-medium">Drowsiness alert triggered</p>
-                    <p className="text-xs text-gray-500">Yesterday - Driver responded within 10 seconds</p>
+                    <p className="text-sm font-medium">System initialized successfully</p>
+                    <p className="text-xs text-gray-500">All safety systems operational</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                   <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                   <div>
-                    <p className="text-sm font-medium">System health check completed</p>
-                    <p className="text-xs text-gray-500">2 days ago - All systems operational</p>
+                    <p className="text-sm font-medium">Emergency contacts verified</p>
+                    <p className="text-xs text-gray-500">Ready to send alerts if needed</p>
                   </div>
                 </div>
               </div>
