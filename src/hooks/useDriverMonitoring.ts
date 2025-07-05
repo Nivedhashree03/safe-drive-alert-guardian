@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { driverMonitoring } from '@/services/driverMonitoringService';
 
@@ -34,7 +33,7 @@ export const useDriverMonitoring = () => {
         setCameraStream(null);
       }
 
-      // Initialize camera with error handling
+      // Initialize camera
       const stream = await driverMonitoring.initializeCamera();
       if (!stream) {
         throw new Error('Failed to access camera - please allow camera permissions');
@@ -43,11 +42,11 @@ export const useDriverMonitoring = () => {
       console.log('📹 Camera stream obtained successfully');
       setCameraStream(stream);
       
-      // Set up video element with proper error handling
+      // Set up video element
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         
-        // Wait for video to be ready before starting monitoring
+        // Wait for video to be ready
         await new Promise<void>((resolve, reject) => {
           if (!videoRef.current) {
             reject(new Error('Video element not available'));
@@ -71,7 +70,7 @@ export const useDriverMonitoring = () => {
       setIsMonitoring(true);
       console.log('🎯 Starting monitoring loop...');
 
-      // Start monitoring loop
+      // Start monitoring loop - check every 3 seconds for better demo
       monitoringIntervalRef.current = setInterval(async () => {
         if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 2) {
           try {
@@ -92,7 +91,7 @@ export const useDriverMonitoring = () => {
             console.error('Error in monitoring loop:', error);
           }
         }
-      }, 2000); // Analyze every 2 seconds
+      }, 3000); // Check every 3 seconds for more responsive demo
 
       console.log('✅ Driver monitoring started successfully');
     } catch (error) {

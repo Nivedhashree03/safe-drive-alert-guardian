@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -22,48 +21,19 @@ const EmergencyAlert = ({ onResponse, emergencyContacts, driverName }: Emergency
   const [isActive, setIsActive] = useState(true);
   const [isSendingMessages, setIsSendingMessages] = useState(false);
 
-  // Create and play emergency sound
+  // Play emergency sound every second during countdown
   useEffect(() => {
-    const playEmergencySound = () => {
-      try {
-        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-        
-        // Create urgent alarm sound
-        const createAlarmTone = () => {
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          
-          // Create alternating high-pitched alarm
-          oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
-          oscillator.frequency.setValueAtTime(1500, audioContext.currentTime + 0.5);
-          oscillator.frequency.setValueAtTime(1000, audioContext.currentTime + 1);
-          
-          gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 1.5);
-          
-          oscillator.start(audioContext.currentTime);
-          oscillator.stop(audioContext.currentTime + 1.5);
-        };
+    if (isActive && countdown > 0) {
+      // Play emergency sound immediately when alert shows
+      driverMonitoring.playEmergencySound();
+      
+      const soundInterval = setInterval(() => {
+        if (countdown > 0) {
+          driverMonitoring.playEmergencySound();
+        }
+      }, 1000);
 
-        // Play alarm repeatedly while alert is active
-        const playAlarm = () => {
-          if (isActive && countdown > 0) {
-            createAlarmTone();
-            setTimeout(playAlarm, 1000); // Repeat every second
-          }
-        };
-
-        playAlarm();
-      } catch (error) {
-        console.error('Failed to play emergency sound:', error);
-      }
-    };
-
-    if (isActive) {
-      playEmergencySound();
+      return () => clearInterval(soundInterval);
     }
   }, [isActive, countdown]);
 
@@ -87,11 +57,9 @@ const EmergencyAlert = ({ onResponse, emergencyContacts, driverName }: Emergency
     console.log('🚨 Automatic emergency protocol activated');
     
     try {
-      // Get current location
       const location = await driverMonitoring.getCurrentLocation();
       console.log('📍 Current location:', location);
       
-      // Send messages to all emergency contacts
       const messagePromises = emergencyContacts.map(contact => 
         driverMonitoring.sendEmergencyMessage(contact.phone, driverName, location)
       );
@@ -99,7 +67,7 @@ const EmergencyAlert = ({ onResponse, emergencyContacts, driverName }: Emergency
       const results = await Promise.all(messagePromises);
       console.log('📱 Message results:', results);
       
-      onResponse(false); // Auto-trigger emergency protocol
+      onResponse(false);
     } catch (error) {
       console.error('Failed to send emergency messages:', error);
       onResponse(false);
