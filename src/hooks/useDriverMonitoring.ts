@@ -34,7 +34,13 @@ export const useDriverMonitoring = () => {
         setCameraStream(null);
       }
 
-      // Initialize camera with error handling
+      // Clear any existing video source
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+        videoRef.current.load();
+      }
+
+      // Initialize camera with better error handling
       const stream = await driverMonitoring.initializeCamera();
       if (!stream) {
         throw new Error('Failed to access camera - please allow camera permissions');
@@ -48,24 +54,36 @@ export const useDriverMonitoring = () => {
         videoRef.current.srcObject = stream;
         
         // Wait for video to be ready before starting monitoring
-        await new Promise<void>((resolve, reject) => {
+        const videoReadyPromise = new Promise<void>((resolve, reject) => {
           if (!videoRef.current) {
             reject(new Error('Video element not available'));
             return;
           }
           
-          videoRef.current.onloadedmetadata = () => {
+          const video = videoRef.current;
+          
+          const onLoadedMetadata = () => {
             console.log('📹 Video metadata loaded');
+            video.removeEventListener('loadedmetadata', onLoadedMetadata);
+            video.removeEventListener('error', onError);
             resolve();
           };
           
-          videoRef.current.onerror = (error) => {
+          const onError = (error: Event) => {
             console.error('Video error:', error);
+            video.removeEventListener('loadedmetadata', onLoadedMetadata);
+            video.removeEventListener('error', onError);
             reject(new Error('Video loading failed'));
           };
           
-          videoRef.current.play().catch(reject);
+          video.addEventListener('loadedmetadata', onLoadedMetadata);
+          video.addEventListener('error', onError);
+          
+          // Start playing
+          video.play().catch(reject);
         });
+
+        await videoReadyPromise;
       }
 
       setIsMonitoring(true);
@@ -83,22 +101,29 @@ export const useDriverMonitoring = () => {
             const status = await driverMonitoring.analyzeDriverState(imageData || undefined);
             setDriverStatus(status);
 
-            // Play alert sound ONLY when sleep is detected
-            if (status === 'asleep') {
-              driverMonitoring.playAlertSound();
-              console.log('🚨 SLEEP DETECTED - Playing alarm sound!');
+            // Play alert sound for both sleep AND drowsiness
+            if (status === 'asleep' || status === 'drowsy') {
+              driverMonitoring.playAlertSound(status);
+              console.log(`🚨 ${status.toUpperCase()} DETECTED - Playing alarm sound!`);
             }
           } catch (error) {
             console.error('Error in monitoring loop:', error);
           }
         }
-      }, 2000); // Analyze every 2 seconds
+      }, 1500); // Analyze every 1.5 seconds for better responsiveness
 
       console.log('✅ Driver monitoring started successfully');
     } catch (error) {
       console.error('Failed to start monitoring:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown camera error';
       setCameraError(errorMessage);
+      
+      // Clean up on error
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
+      
       throw error;
     }
   }, [cameraStream]);
@@ -122,6 +147,7 @@ export const useDriverMonitoring = () => {
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
+      videoRef.current.load();
     }
 
     setIsMonitoring(false);

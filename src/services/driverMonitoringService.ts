@@ -4,55 +4,78 @@ export class DriverMonitoringService {
   private model: any = null;
   private isModelLoaded = false;
   private audioContext: AudioContext | null = null;
-  private alertSound: AudioBuffer | null = null;
+  private sleepAlertSound: AudioBuffer | null = null;
+  private drowsyAlertSound: AudioBuffer | null = null;
 
   constructor() {
     this.initializeAudio();
   }
 
-  // Initialize audio context and load alert sound
+  // Initialize audio context and load alert sounds
   private async initializeAudio() {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      // Create a sleep-specific alert tone
-      await this.createSleepAlertTone();
+      // Create different alert tones for sleep and drowsiness
+      await this.createAlertTones();
     } catch (error) {
       console.error('Failed to initialize audio:', error);
     }
   }
 
-  // Create an urgent sleep detection alert tone
-  private async createSleepAlertTone() {
+  // Create different alert tones for sleep and drowsiness
+  private async createAlertTones() {
     if (!this.audioContext) return;
 
     const sampleRate = this.audioContext.sampleRate;
-    const duration = 3; // 3 seconds of urgent alarm
-    const buffer = this.audioContext.createBuffer(1, sampleRate * duration, sampleRate);
-    const data = buffer.getChannelData(0);
+    
+    // Create urgent sleep detection alarm (more intense)
+    const sleepDuration = 2;
+    const sleepBuffer = this.audioContext.createBuffer(1, sampleRate * sleepDuration, sampleRate);
+    const sleepData = sleepBuffer.getChannelData(0);
 
-    // Create an urgent, piercing alarm sound for sleep detection
-    for (let i = 0; i < buffer.length; i++) {
+    for (let i = 0; i < sleepBuffer.length; i++) {
       const time = i / sampleRate;
-      // Rapid alternating between high frequencies for urgency
-      const frequency = Math.sin(time * 8) > 0 ? 1400 : 1800;
-      const envelope = Math.sin(time * 4) * 0.5; // Pulsing effect
-      data[i] = Math.sin(2 * Math.PI * frequency * time) * (0.4 + envelope);
+      // Very urgent, high-pitched alternating alarm for sleep
+      const frequency = Math.sin(time * 6) > 0 ? 1600 : 2000;
+      const envelope = Math.sin(time * 8) * 0.6;
+      sleepData[i] = Math.sin(2 * Math.PI * frequency * time) * (0.5 + envelope);
     }
+    this.sleepAlertSound = sleepBuffer;
 
-    this.alertSound = buffer;
+    // Create drowsiness alert (less intense but noticeable)
+    const drowsyDuration = 1.5;
+    const drowsyBuffer = this.audioContext.createBuffer(1, sampleRate * drowsyDuration, sampleRate);
+    const drowsyData = drowsyBuffer.getChannelData(0);
+
+    for (let i = 0; i < drowsyBuffer.length; i++) {
+      const time = i / sampleRate;
+      // Moderate alert for drowsiness
+      const frequency = Math.sin(time * 4) > 0 ? 800 : 1200;
+      const envelope = Math.sin(time * 6) * 0.4;
+      drowsyData[i] = Math.sin(2 * Math.PI * frequency * time) * (0.3 + envelope);
+    }
+    this.drowsyAlertSound = drowsyBuffer;
   }
 
-  // Play sleep detection alarm sound
-  playAlertSound() {
-    if (!this.audioContext || !this.alertSound) return;
+  // Play appropriate alert sound based on detection type
+  playAlertSound(detectionType: 'asleep' | 'drowsy') {
+    if (!this.audioContext) return;
 
     try {
       const source = this.audioContext.createBufferSource();
-      source.buffer = this.alertSound;
+      
+      if (detectionType === 'asleep' && this.sleepAlertSound) {
+        source.buffer = this.sleepAlertSound;
+        console.log('🚨 SLEEP DETECTION ALARM - Playing urgent sound!');
+      } else if (detectionType === 'drowsy' && this.drowsyAlertSound) {
+        source.buffer = this.drowsyAlertSound;
+        console.log('⚠️ DROWSINESS DETECTION ALARM - Playing warning sound!');
+      } else {
+        return;
+      }
+      
       source.connect(this.audioContext.destination);
       source.start();
-      
-      console.log('🚨 SLEEP DETECTION ALARM - Sound playing!');
     } catch (error) {
       console.error('Failed to play alert sound:', error);
     }
@@ -77,7 +100,7 @@ export class DriverMonitoringService {
     }
   }
 
-  // Analyze driver state using your trained model
+  // Analyze driver state using improved simulation for demo
   async analyzeDriverState(imageData?: ImageData): Promise<'awake' | 'drowsy' | 'asleep'> {
     if (!this.isModelLoaded) {
       console.warn('Model not loaded, using simulation');
@@ -90,7 +113,7 @@ export class DriverMonitoringService {
       // const prediction = await this.model.predict(preprocessedImage);
       // const sleepProbability = prediction.dataSync()[0];
       
-      // For now, we'll simulate realistic detection
+      // For now, we'll simulate realistic detection for presentation
       return this.simulateDetection();
     } catch (error) {
       console.error('Error in model prediction:', error);
@@ -98,22 +121,35 @@ export class DriverMonitoringService {
     }
   }
 
-  // Simulate sleep detection for demo purposes
+  // Improved simulation for demo purposes - more realistic patterns
   private simulateDetection(): 'awake' | 'drowsy' | 'asleep' {
     const random = Math.random();
-    const time = new Date().getSeconds();
+    const time = Date.now();
+    const cycleTime = Math.floor(time / 1000) % 45; // 45 second cycles
     
-    // Create realistic patterns for demo
-    if (time % 30 < 5) {
-      return random < 0.7 ? 'asleep' : 'drowsy'; // Higher chance of sleep detection every 30 seconds
-    } else if (time % 20 < 3) {
-      return random < 0.8 ? 'drowsy' : 'awake'; // Drowsiness detection
+    // Create realistic demo patterns
+    if (cycleTime < 10) {
+      // First 10 seconds: mostly awake
+      return random < 0.9 ? 'awake' : 'drowsy';
+    } else if (cycleTime < 20) {
+      // Next 10 seconds: introduce drowsiness
+      if (random < 0.3) return 'drowsy';
+      if (random < 0.05) return 'asleep';
+      return 'awake';
+    } else if (cycleTime < 30) {
+      // Next 10 seconds: more drowsiness and some sleep
+      if (random < 0.5) return 'drowsy';
+      if (random < 0.2) return 'asleep';
+      return 'awake';
+    } else {
+      // Last 15 seconds: critical sleep detection for demo
+      if (random < 0.4) return 'asleep';
+      if (random < 0.7) return 'drowsy';
+      return 'awake';
     }
-    
-    return 'awake';
   }
 
-  // Get camera stream for real-time monitoring with better error handling
+  // Get camera stream with comprehensive error handling
   async initializeCamera(): Promise<MediaStream | null> {
     try {
       console.log('🔍 Requesting camera access...');
@@ -123,19 +159,54 @@ export class DriverMonitoringService {
         throw new Error('Camera access not supported in this browser');
       }
 
-      const constraints = {
-        video: { 
-          width: { ideal: 640 }, 
-          height: { ideal: 480 },
-          facingMode: 'user' // Front camera for driver monitoring
+      // Try different constraint configurations
+      const constraints = [
+        {
+          video: { 
+            width: { ideal: 640 }, 
+            height: { ideal: 480 },
+            facingMode: 'user'
+          },
+          audio: false
         },
-        audio: false
-      };
+        {
+          video: { 
+            width: { min: 320 }, 
+            height: { min: 240 },
+            facingMode: 'user'
+          },
+          audio: false
+        },
+        {
+          video: true,
+          audio: false
+        }
+      ];
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('📹 Camera initialized successfully for driver monitoring');
-      console.log('📹 Video tracks:', stream.getVideoTracks().length);
-      
+      let stream: MediaStream | null = null;
+      let lastError: Error | null = null;
+
+      // Try each constraint configuration
+      for (const constraint of constraints) {
+        try {
+          console.log('🎥 Trying camera constraint:', constraint);
+          stream = await navigator.mediaDevices.getUserMedia(constraint);
+          if (stream && stream.getVideoTracks().length > 0) {
+            console.log('📹 Camera initialized successfully with constraint');
+            console.log('📹 Video tracks:', stream.getVideoTracks().length);
+            break;
+          }
+        } catch (error) {
+          lastError = error as Error;
+          console.warn('⚠️ Camera constraint failed, trying next...', error);
+          continue;
+        }
+      }
+
+      if (!stream || stream.getVideoTracks().length === 0) {
+        throw lastError || new Error('Failed to obtain camera stream');
+      }
+
       return stream;
     } catch (error) {
       console.error('❌ Failed to access camera:', error);
@@ -147,10 +218,12 @@ export class DriverMonitoringService {
           throw new Error('No camera found. Please connect a camera and try again.');
         } else if (error.name === 'NotReadableError') {
           throw new Error('Camera is already in use by another application.');
+        } else if (error.name === 'AbortError') {
+          throw new Error('Camera request was cancelled. Please try again.');
         }
       }
       
-      throw new Error('Failed to access camera. Please check your camera settings.');
+      throw new Error('Failed to access camera. Please check your camera settings and permissions.');
     }
   }
 
@@ -160,9 +233,12 @@ export class DriverMonitoringService {
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
 
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
+      // Ensure video is ready
+      if (video.readyState < 2) return null;
+
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       return ctx.getImageData(0, 0, canvas.width, canvas.height);
     } catch (error) {
