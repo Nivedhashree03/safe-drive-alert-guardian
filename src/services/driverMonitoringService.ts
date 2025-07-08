@@ -125,31 +125,31 @@ export class DriverMonitoringService {
   private simulateDetection(): 'awake' | 'drowsy' | 'asleep' {
     const random = Math.random();
     const time = Date.now();
-    const cycleTime = Math.floor(time / 1000) % 45; // 45 second cycles
+    const cycleTime = Math.floor(time / 1000) % 60; // 60 second cycles for demo
     
-    // Create realistic demo patterns
-    if (cycleTime < 10) {
-      // First 10 seconds: mostly awake
-      return random < 0.9 ? 'awake' : 'drowsy';
-    } else if (cycleTime < 20) {
-      // Next 10 seconds: introduce drowsiness
-      if (random < 0.3) return 'drowsy';
-      if (random < 0.05) return 'asleep';
+    // Create realistic demo patterns for presentation
+    if (cycleTime < 15) {
+      // First 15 seconds: mostly awake
+      return random < 0.95 ? 'awake' : 'drowsy';
+    } else if (cycleTime < 25) {
+      // Next 10 seconds: introduce drowsiness with alarm
+      if (random < 0.4) return 'drowsy';
+      if (random < 0.1) return 'asleep';
       return 'awake';
-    } else if (cycleTime < 30) {
-      // Next 10 seconds: more drowsiness and some sleep
-      if (random < 0.5) return 'drowsy';
-      if (random < 0.2) return 'asleep';
+    } else if (cycleTime < 40) {
+      // Next 15 seconds: more drowsiness and some sleep with alarms
+      if (random < 0.6) return 'drowsy';
+      if (random < 0.3) return 'asleep';
       return 'awake';
     } else {
-      // Last 15 seconds: critical sleep detection for demo
-      if (random < 0.4) return 'asleep';
-      if (random < 0.7) return 'drowsy';
+      // Last 20 seconds: critical sleep detection for demo with emergency
+      if (random < 0.5) return 'asleep';
+      if (random < 0.8) return 'drowsy';
       return 'awake';
     }
   }
 
-  // Get camera stream with comprehensive error handling
+  // Get camera stream with improved error handling
   async initializeCamera(): Promise<MediaStream | null> {
     try {
       console.log('🔍 Requesting camera access...');
@@ -159,12 +159,16 @@ export class DriverMonitoringService {
         throw new Error('Camera access not supported in this browser');
       }
 
-      // Try different constraint configurations
+      // Request permissions first
+      const permissions = await navigator.permissions.query({ name: 'camera' as PermissionName });
+      console.log('📹 Camera permission status:', permissions.state);
+
+      // Try different constraint configurations with more flexibility
       const constraints = [
         {
           video: { 
-            width: { ideal: 640 }, 
-            height: { ideal: 480 },
+            width: { ideal: 640, min: 320 }, 
+            height: { ideal: 480, min: 240 },
             facingMode: 'user'
           },
           audio: false
@@ -172,8 +176,7 @@ export class DriverMonitoringService {
         {
           video: { 
             width: { min: 320 }, 
-            height: { min: 240 },
-            facingMode: 'user'
+            height: { min: 240 }
           },
           audio: false
         },
@@ -192,13 +195,17 @@ export class DriverMonitoringService {
           console.log('🎥 Trying camera constraint:', constraint);
           stream = await navigator.mediaDevices.getUserMedia(constraint);
           if (stream && stream.getVideoTracks().length > 0) {
-            console.log('📹 Camera initialized successfully with constraint');
+            console.log('📹 Camera initialized successfully');
             console.log('📹 Video tracks:', stream.getVideoTracks().length);
+            
+            // Test the stream
+            const videoTrack = stream.getVideoTracks()[0];
+            console.log('📹 Video track settings:', videoTrack.getSettings());
             break;
           }
         } catch (error) {
           lastError = error as Error;
-          console.warn('⚠️ Camera constraint failed, trying next...', error);
+          console.warn('⚠️ Camera constraint failed:', error);
           continue;
         }
       }
@@ -213,7 +220,7 @@ export class DriverMonitoringService {
       
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          throw new Error('Camera permission denied. Please allow camera access and try again.');
+          throw new Error('Camera permission denied. Please allow camera access and refresh the page.');
         } else if (error.name === 'NotFoundError') {
           throw new Error('No camera found. Please connect a camera and try again.');
         } else if (error.name === 'NotReadableError') {

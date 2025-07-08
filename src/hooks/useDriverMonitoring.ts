@@ -12,6 +12,7 @@ export const useDriverMonitoring = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const monitoringIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitializingRef = useRef(false);
 
   // Load the trained model on component mount
   useEffect(() => {
@@ -24,7 +25,13 @@ export const useDriverMonitoring = () => {
 
   // Start monitoring function
   const startMonitoring = useCallback(async () => {
+    if (isInitializingRef.current) {
+      console.log('🔄 Already initializing, please wait...');
+      return;
+    }
+
     try {
+      isInitializingRef.current = true;
       setCameraError(null);
       console.log('🎯 Starting camera initialization...');
       
@@ -37,7 +44,6 @@ export const useDriverMonitoring = () => {
       // Clear any existing video source
       if (videoRef.current) {
         videoRef.current.srcObject = null;
-        videoRef.current.load();
       }
 
       // Initialize camera with better error handling
@@ -54,7 +60,7 @@ export const useDriverMonitoring = () => {
         videoRef.current.srcObject = stream;
         
         // Wait for video to be ready before starting monitoring
-        const videoReadyPromise = new Promise<void>((resolve, reject) => {
+        await new Promise<void>((resolve, reject) => {
           if (!videoRef.current) {
             reject(new Error('Video element not available'));
             return;
@@ -82,8 +88,6 @@ export const useDriverMonitoring = () => {
           // Start playing
           video.play().catch(reject);
         });
-
-        await videoReadyPromise;
       }
 
       setIsMonitoring(true);
@@ -113,6 +117,7 @@ export const useDriverMonitoring = () => {
       }, 1500); // Analyze every 1.5 seconds for better responsiveness
 
       console.log('✅ Driver monitoring started successfully');
+      isInitializingRef.current = false;
     } catch (error) {
       console.error('Failed to start monitoring:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown camera error';
@@ -124,6 +129,7 @@ export const useDriverMonitoring = () => {
         setCameraStream(null);
       }
       
+      isInitializingRef.current = false;
       throw error;
     }
   }, [cameraStream]);
@@ -147,7 +153,6 @@ export const useDriverMonitoring = () => {
 
     if (videoRef.current) {
       videoRef.current.srcObject = null;
-      videoRef.current.load();
     }
 
     setIsMonitoring(false);
@@ -156,12 +161,17 @@ export const useDriverMonitoring = () => {
     console.log('⏹️ Driver monitoring stopped');
   }, [cameraStream]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount only
   useEffect(() => {
     return () => {
-      stopMonitoring();
+      if (monitoringIntervalRef.current) {
+        clearInterval(monitoringIntervalRef.current);
+      }
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
     };
-  }, [stopMonitoring]);
+  }, []); // Empty dependency array - only run on unmount
 
   return {
     isMonitoring,
