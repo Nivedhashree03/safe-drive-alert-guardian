@@ -13,6 +13,7 @@ export const useDriverMonitoring = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const monitoringIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isInitializingRef = useRef(false);
+  const previousStatusRef = useRef<'awake' | 'drowsy' | 'asleep'>('awake');
 
   // Load the trained model on component mount
   useEffect(() => {
@@ -22,6 +23,26 @@ export const useDriverMonitoring = () => {
     };
     loadModel();
   }, []);
+
+  // Monitor driver status changes and handle alarm accordingly
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current;
+    
+    if (driverStatus === 'awake' && previousStatus !== 'awake') {
+      // Driver became awake - stop any alarm
+      driverMonitoring.stopAlarm();
+      console.log('✅ Driver is awake - Alarm stopped');
+    } else if (driverStatus === 'asleep') {
+      // Driver is asleep - play alarm
+      driverMonitoring.playAlertSound('asleep');
+      console.log('🚨 SLEEP DETECTED - Playing alarm!');
+    } else if (driverStatus === 'drowsy') {
+      // Driver is drowsy - no alarm, just warning
+      console.log('⚠️ DROWSINESS DETECTED - Warning only (no alarm)');
+    }
+    
+    previousStatusRef.current = driverStatus;
+  }, [driverStatus]);
 
   // Start monitoring function
   const startMonitoring = useCallback(async () => {
@@ -105,11 +126,7 @@ export const useDriverMonitoring = () => {
             const status = await driverMonitoring.analyzeDriverState(imageData || undefined);
             setDriverStatus(status);
 
-            // Play alert sound for both sleep AND drowsiness
-            if (status === 'asleep' || status === 'drowsy') {
-              driverMonitoring.playAlertSound(status);
-              console.log(`🚨 ${status.toUpperCase()} DETECTED - Playing alarm sound!`);
-            }
+            // Note: Alarm is now handled in the useEffect above based on status changes
           } catch (error) {
             console.error('Error in monitoring loop:', error);
           }
@@ -155,9 +172,13 @@ export const useDriverMonitoring = () => {
       videoRef.current.srcObject = null;
     }
 
+    // Stop any playing alarm when monitoring stops
+    driverMonitoring.stopAlarm();
+
     setIsMonitoring(false);
     setDriverStatus('awake');
     setCameraError(null);
+    previousStatusRef.current = 'awake';
     console.log('⏹️ Driver monitoring stopped');
   }, [cameraStream]);
 
@@ -170,6 +191,7 @@ export const useDriverMonitoring = () => {
       if (cameraStream) {
         cameraStream.getTracks().forEach(track => track.stop());
       }
+      driverMonitoring.stopAlarm();
     };
   }, []); // Empty dependency array - only run on unmount
 

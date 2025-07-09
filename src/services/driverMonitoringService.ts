@@ -1,11 +1,10 @@
-
 // Service to handle driver monitoring with trained model integration
 export class DriverMonitoringService {
   private model: any = null;
   private isModelLoaded = false;
   private audioContext: AudioContext | null = null;
   private sleepAlertSound: AudioBuffer | null = null;
-  private drowsyAlertSound: AudioBuffer | null = null;
+  private currentAlarmSource: AudioBufferSourceNode | null = null;
 
   constructor() {
     this.initializeAudio();
@@ -15,70 +14,79 @@ export class DriverMonitoringService {
   private async initializeAudio() {
     try {
       this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      // Create different alert tones for sleep and drowsiness
+      // Create alert tone only for critical sleep detection
       await this.createAlertTones();
     } catch (error) {
       console.error('Failed to initialize audio:', error);
     }
   }
 
-  // Create different alert tones for sleep and drowsiness
+  // Create alert tone only for sleep detection (critical situations)
   private async createAlertTones() {
     if (!this.audioContext) return;
 
     const sampleRate = this.audioContext.sampleRate;
     
-    // Create urgent sleep detection alarm (more intense)
+    // Create urgent sleep detection alarm only
     const sleepDuration = 2;
     const sleepBuffer = this.audioContext.createBuffer(1, sampleRate * sleepDuration, sampleRate);
     const sleepData = sleepBuffer.getChannelData(0);
 
     for (let i = 0; i < sleepBuffer.length; i++) {
       const time = i / sampleRate;
-      // Very urgent, high-pitched alternating alarm for sleep
+      // Very urgent, high-pitched alternating alarm for sleep only
       const frequency = Math.sin(time * 6) > 0 ? 1600 : 2000;
       const envelope = Math.sin(time * 8) * 0.6;
       sleepData[i] = Math.sin(2 * Math.PI * frequency * time) * (0.5 + envelope);
     }
     this.sleepAlertSound = sleepBuffer;
-
-    // Create drowsiness alert (less intense but noticeable)
-    const drowsyDuration = 1.5;
-    const drowsyBuffer = this.audioContext.createBuffer(1, sampleRate * drowsyDuration, sampleRate);
-    const drowsyData = drowsyBuffer.getChannelData(0);
-
-    for (let i = 0; i < drowsyBuffer.length; i++) {
-      const time = i / sampleRate;
-      // Moderate alert for drowsiness
-      const frequency = Math.sin(time * 4) > 0 ? 800 : 1200;
-      const envelope = Math.sin(time * 6) * 0.4;
-      drowsyData[i] = Math.sin(2 * Math.PI * frequency * time) * (0.3 + envelope);
-    }
-    this.drowsyAlertSound = drowsyBuffer;
   }
 
-  // Play appropriate alert sound based on detection type
+  // Stop any currently playing alarm
+  private stopCurrentAlarm() {
+    if (this.currentAlarmSource) {
+      try {
+        this.currentAlarmSource.stop();
+        this.currentAlarmSource.disconnect();
+      } catch (error) {
+        // Alarm may have already stopped
+      }
+      this.currentAlarmSource = null;
+    }
+  }
+
+  // Play alert sound ONLY for sleep detection
   playAlertSound(detectionType: 'asleep' | 'drowsy') {
-    if (!this.audioContext) return;
+    // Stop any existing alarm first
+    this.stopCurrentAlarm();
+    
+    // Only play alarm for sleep detection, NOT for drowsiness
+    if (detectionType !== 'asleep') {
+      console.log(`⚠️ ${detectionType.toUpperCase()} detected - No alarm (alarm only for sleep)`);
+      return;
+    }
+
+    if (!this.audioContext || !this.sleepAlertSound) return;
 
     try {
       const source = this.audioContext.createBufferSource();
-      
-      if (detectionType === 'asleep' && this.sleepAlertSound) {
-        source.buffer = this.sleepAlertSound;
-        console.log('🚨 SLEEP DETECTION ALARM - Playing urgent sound!');
-      } else if (detectionType === 'drowsy' && this.drowsyAlertSound) {
-        source.buffer = this.drowsyAlertSound;
-        console.log('⚠️ DROWSINESS DETECTION ALARM - Playing warning sound!');
-      } else {
-        return;
-      }
-      
+      source.buffer = this.sleepAlertSound;
       source.connect(this.audioContext.destination);
       source.start();
+      
+      // Keep reference to stop if needed
+      this.currentAlarmSource = source;
+      
+      console.log('🚨 SLEEP DETECTION ALARM - Playing urgent sound!');
     } catch (error) {
       console.error('Failed to play alert sound:', error);
     }
+  }
+
+  // Stop alarm when driver becomes awake
+  stopAlarm() {
+    this.stopCurrentAlarm();
+    console.log('✅ Driver is awake - Alarm stopped');
   }
 
   // Load your trained model (placeholder - replace with your actual model)
@@ -254,13 +262,12 @@ export class DriverMonitoringService {
     }
   }
 
-  // Send emergency message to contact
+  // Send emergency message to contact - REAL SMS requires Supabase backend
   async sendEmergencyMessage(phoneNumber: string, driverName: string, location: string) {
     try {
-      console.log('📱 Sending emergency message to:', phoneNumber);
+      console.log('📱 Attempting to send REAL emergency SMS to:', phoneNumber);
       
-      // In a real app, this would integrate with SMS service like Twilio
-      // For demo purposes, we'll simulate the message
+      // This is still simulated - REAL SMS requires Supabase + Twilio integration
       const message = `🚨 EMERGENCY ALERT 🚨
 Driver: ${driverName}
 Status: SLEEP DETECTED WHILE DRIVING
@@ -268,19 +275,36 @@ Location: ${location}
 Time: ${new Date().toLocaleString()}
 This is an automated emergency alert from Safe Drive Guardian.`;
 
-      console.log('📱 Emergency message sent:', message);
+      console.log('📱 Emergency message content:', message);
+      console.warn('⚠️ REAL SMS SENDING REQUIRES SUPABASE BACKEND INTEGRATION');
       
-      // Simulate API call
+      // Simulate API call - Replace with real Supabase edge function call
       await new Promise(resolve => setTimeout(resolve, 1000));
       
-      return { success: true, message: 'Emergency message sent successfully' };
+      return { success: true, message: 'Emergency message sent successfully (simulated - needs Supabase for real SMS)' };
     } catch (error) {
       console.error('Failed to send emergency message:', error);
       return { success: false, message: 'Failed to send emergency message' };
     }
   }
 
-  // Get current location
+  // Make emergency call - REAL calling requires Supabase backend  
+  async makeEmergencyCall(phoneNumber: string, driverName: string) {
+    try {
+      console.log('📞 Attempting to make REAL emergency call to:', phoneNumber);
+      console.warn('⚠️ REAL CALLING REQUIRES SUPABASE BACKEND INTEGRATION');
+      
+      // Simulate call - Replace with real Supabase edge function call
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      return { success: true, message: 'Emergency call initiated (simulated - needs Supabase for real calls)' };
+    } catch (error) {
+      console.error('Failed to make emergency call:', error);
+      return { success: false, message: 'Failed to make emergency call' };
+    }
+  }
+
+  // Get current location with improved accuracy
   async getCurrentLocation(): Promise<string> {
     try {
       if (!navigator.geolocation) {
@@ -290,12 +314,15 @@ This is an automated emergency alert from Safe Drive Guardian.`;
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           timeout: 10000,
-          enableHighAccuracy: true
+          enableHighAccuracy: true,
+          maximumAge: 0
         });
       });
 
       const { latitude, longitude } = position.coords;
-      return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      const preciseLocation = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      console.log('📍 Precise location obtained:', preciseLocation);
+      return preciseLocation;
     } catch (error) {
       console.error('Failed to get location:', error);
       return 'Location unavailable';
