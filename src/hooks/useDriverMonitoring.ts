@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { driverMonitoring } from '@/services/driverMonitoringService';
 
@@ -44,7 +43,7 @@ export const useDriverMonitoring = () => {
     previousStatusRef.current = driverStatus;
   }, [driverStatus]);
 
-  // Start monitoring function
+  // Start monitoring function with improved camera handling
   const startMonitoring = useCallback(async () => {
     if (isInitializingRef.current) {
       console.log('🔄 Already initializing, please wait...');
@@ -67,7 +66,10 @@ export const useDriverMonitoring = () => {
         videoRef.current.srcObject = null;
       }
 
-      // Initialize camera with better error handling
+      // Request user interaction first for better permission handling
+      console.log('📱 Please allow camera access when prompted...');
+      
+      // Initialize camera with improved error handling
       const stream = await driverMonitoring.initializeCamera();
       if (!stream) {
         throw new Error('Failed to access camera - please allow camera permissions');
@@ -78,19 +80,21 @@ export const useDriverMonitoring = () => {
       
       // Set up video element with proper error handling
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        const video = videoRef.current;
+        video.srcObject = stream;
         
         // Wait for video to be ready before starting monitoring
         await new Promise<void>((resolve, reject) => {
-          if (!videoRef.current) {
-            reject(new Error('Video element not available'));
-            return;
-          }
-          
-          const video = videoRef.current;
+          const timeoutId = setTimeout(() => {
+            video.removeEventListener('loadedmetadata', onLoadedMetadata);
+            video.removeEventListener('error', onError);
+            reject(new Error('Video loading timeout'));
+          }, 15000); // 15 second timeout
           
           const onLoadedMetadata = () => {
             console.log('📹 Video metadata loaded');
+            console.log('📹 Video dimensions:', video.videoWidth, 'x', video.videoHeight);
+            clearTimeout(timeoutId);
             video.removeEventListener('loadedmetadata', onLoadedMetadata);
             video.removeEventListener('error', onError);
             resolve();
@@ -98,6 +102,7 @@ export const useDriverMonitoring = () => {
           
           const onError = (error: Event) => {
             console.error('Video error:', error);
+            clearTimeout(timeoutId);
             video.removeEventListener('loadedmetadata', onLoadedMetadata);
             video.removeEventListener('error', onError);
             reject(new Error('Video loading failed'));
@@ -106,32 +111,50 @@ export const useDriverMonitoring = () => {
           video.addEventListener('loadedmetadata', onLoadedMetadata);
           video.addEventListener('error', onError);
           
-          // Start playing
-          video.play().catch(reject);
+          // Start playing with user gesture consideration
+          const playPromise = video.play();
+          if (playPromise) {
+            playPromise.catch((playError) => {
+              console.warn('Video play failed:', playError);
+              // Try to play again after a short delay
+              setTimeout(() => {
+                video.play().catch(reject);
+              }, 100);
+            });
+          }
         });
       }
 
       setIsMonitoring(true);
       console.log('🎯 Starting monitoring loop...');
 
-      // Start monitoring loop
+      // Start monitoring loop with better error handling
       monitoringIntervalRef.current = setInterval(async () => {
         if (videoRef.current && canvasRef.current && videoRef.current.readyState >= 2) {
           try {
+            // Check if video is still playing
+            if (videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0) {
+              console.warn('⚠️ Video dimensions are 0, skipping frame analysis');
+              return;
+            }
+
             const imageData = driverMonitoring.processVideoFrame(
               videoRef.current,
               canvasRef.current
             );
             
-            const status = await driverMonitoring.analyzeDriverState(imageData || undefined);
-            setDriverStatus(status);
-
-            // Note: Alarm is now handled in the useEffect above based on status changes
+            if (imageData) {
+              const status = await driverMonitoring.analyzeDriverState(imageData);
+              setDriverStatus(status);
+              console.log('🔍 Driver status analyzed:', status);
+            }
           } catch (error) {
             console.error('Error in monitoring loop:', error);
           }
+        } else {
+          console.log('⏳ Waiting for video to be ready...');
         }
-      }, 1500); // Analyze every 1.5 seconds for better responsiveness
+      }, 1500); // Analyze every 1.5 seconds
 
       console.log('✅ Driver monitoring started successfully');
       isInitializingRef.current = false;

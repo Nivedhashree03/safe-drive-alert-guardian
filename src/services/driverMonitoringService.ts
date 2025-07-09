@@ -157,35 +157,51 @@ export class DriverMonitoringService {
     }
   }
 
-  // Get camera stream with improved error handling
+  // Get camera stream with improved error handling and user interaction
   async initializeCamera(): Promise<MediaStream | null> {
     try {
       console.log('🔍 Requesting camera access...');
       
       // Check if getUserMedia is supported
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera access not supported in this browser');
+        throw new Error('Camera access not supported in this browser. Please use Chrome, Firefox, or Safari.');
       }
 
-      // Request permissions first
-      const permissions = await navigator.permissions.query({ name: 'camera' as PermissionName });
-      console.log('📹 Camera permission status:', permissions.state);
+      // First, check if we already have permissions
+      let permissionStatus;
+      try {
+        permissionStatus = await navigator.permissions.query({ name: 'camera' as PermissionName });
+        console.log('📹 Camera permission status:', permissionStatus.state);
+      } catch (error) {
+        console.log('Could not check permissions, proceeding with request...');
+      }
 
-      // Try different constraint configurations with more flexibility
+      // If permission was denied, provide clear instructions
+      if (permissionStatus && permissionStatus.state === 'denied') {
+        throw new Error('Camera permission denied. Please enable camera access in your browser settings and refresh the page.');
+      }
+
+      // Enhanced constraints with fallback options
       const constraints = [
         {
           video: { 
-            width: { ideal: 640, min: 320 }, 
-            height: { ideal: 480, min: 240 },
-            facingMode: 'user'
+            width: { ideal: 640, min: 320, max: 1280 }, 
+            height: { ideal: 480, min: 240, max: 720 },
+            facingMode: 'user',
+            frameRate: { ideal: 30, min: 15 }
           },
           audio: false
         },
         {
           video: { 
-            width: { min: 320 }, 
-            height: { min: 240 }
+            width: { ideal: 320 }, 
+            height: { ideal: 240 },
+            facingMode: 'user'
           },
+          audio: false
+        },
+        {
+          video: { facingMode: 'user' },
           audio: false
         },
         {
@@ -198,10 +214,18 @@ export class DriverMonitoringService {
       let lastError: Error | null = null;
 
       // Try each constraint configuration
-      for (const constraint of constraints) {
+      for (let i = 0; i < constraints.length; i++) {
         try {
-          console.log('🎥 Trying camera constraint:', constraint);
-          stream = await navigator.mediaDevices.getUserMedia(constraint);
+          console.log(`🎥 Trying camera constraint ${i + 1}/${constraints.length}:`, constraints[i]);
+          
+          // Add timeout to prevent hanging
+          const streamPromise = navigator.mediaDevices.getUserMedia(constraints[i]);
+          const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Camera request timeout')), 10000)
+          );
+          
+          stream = await Promise.race([streamPromise, timeoutPromise]) as MediaStream;
+          
           if (stream && stream.getVideoTracks().length > 0) {
             console.log('📹 Camera initialized successfully');
             console.log('📹 Video tracks:', stream.getVideoTracks().length);
@@ -209,17 +233,33 @@ export class DriverMonitoringService {
             // Test the stream
             const videoTrack = stream.getVideoTracks()[0];
             console.log('📹 Video track settings:', videoTrack.getSettings());
-            break;
+            console.log('📹 Video track capabilities:', videoTrack.getCapabilities?.());
+            
+            // Ensure the track is active
+            if (videoTrack.readyState === 'live') {
+              console.log('✅ Camera stream is live and ready');
+              break;
+            } else {
+              console.warn('⚠️ Camera track not live, trying next constraint...');
+              stream.getTracks().forEach(track => track.stop());
+              stream = null;
+              continue;
+            }
           }
         } catch (error) {
           lastError = error as Error;
-          console.warn('⚠️ Camera constraint failed:', error);
+          console.warn(`⚠️ Camera constraint ${i + 1} failed:`, error);
+          
+          // If this was a permission error, don't try other constraints
+          if (error instanceof Error && error.name === 'NotAllowedError') {
+            break;
+          }
           continue;
         }
       }
 
       if (!stream || stream.getVideoTracks().length === 0) {
-        throw lastError || new Error('Failed to obtain camera stream');
+        throw lastError || new Error('Failed to obtain camera stream after trying all configurations');
       }
 
       return stream;
@@ -228,17 +268,21 @@ export class DriverMonitoringService {
       
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          throw new Error('Camera permission denied. Please allow camera access and refresh the page.');
+          throw new Error('Camera permission denied. Please click "Allow" when prompted, or enable camera access in your browser settings and refresh the page.');
         } else if (error.name === 'NotFoundError') {
-          throw new Error('No camera found. Please connect a camera and try again.');
+          throw new Error('No camera found. Please connect a camera device and try again.');
         } else if (error.name === 'NotReadableError') {
-          throw new Error('Camera is already in use by another application.');
+          throw new Error('Camera is already in use by another application. Please close other apps using the camera and try again.');
         } else if (error.name === 'AbortError') {
-          throw new Error('Camera request was cancelled. Please try again.');
+          throw new Error('Camera request was cancelled. Please try again and allow camera access when prompted.');
+        } else if (error.name === 'OverconstrainedError') {
+          throw new Error('Camera constraints not supported. Please try with a different camera or update your browser.');
+        } else if (error.message.includes('timeout')) {
+          throw new Error('Camera request timed out. Please check your camera connection and try again.');
         }
       }
       
-      throw new Error('Failed to access camera. Please check your camera settings and permissions.');
+      throw new Error(`Failed to access camera: ${error instanceof Error ? error.message : 'Unknown error'}. Please check your camera permissions and try again.`);
     }
   }
 
