@@ -217,7 +217,7 @@ const PresentationContent = () => {
                   <Badge variant="destructive" className="mt-1">Asleep</Badge>
                   <div>
                     <p className="font-medium">Critical Alert</p>
-                    <p className="text-sm text-gray-600">Eyes closed >2 seconds, head dropping - <strong>ALARM + Emergency Protocol</strong></p>
+                    <p className="text-sm text-gray-600">Eyes closed {'>'} 2 seconds, head dropping - <strong>ALARM + Emergency Protocol</strong></p>
                   </div>
                 </div>
               </div>
